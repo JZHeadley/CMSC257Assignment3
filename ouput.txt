@@ -1,0 +1,15 @@
+rm -f normalmat
+gcc normalmat.c -lm -o normalmat
+./normalmat
+Enter the value of n: 
+Normal Matrix Multiplication
+
+Elapsed time:         0.42 
+DP MFLOPS:           128.57 
+
+Transposed Matrix Multiplication
+
+Elapsed time:         0.25 
+DP MFLOPS:           216.00 
+
+Blocked Matrix Multiplication

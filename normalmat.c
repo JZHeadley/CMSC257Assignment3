@@ -154,15 +154,21 @@ void createSomeReport(){
     }
 }
 
-int main (void){
+int main (int argc, char *argv[]){
     //createSomeReport();
     //return 0;
-    int i, j, n;
+    int i, j, n, blockSize;
     double **a, **b, **c, **transposedMatrixB;
-
-    printf ( "Enter the value of n: ");
-    scanf ( "%d", &n);
-
+    if(argc == 3){
+        printf("Command Line args were passed");
+        n =atoi(argv[1]);
+        blockSize = atoi(argv[2]);
+    } else{
+        printf ( "Enter the value of n: ");
+        scanf ( "%d", &n);
+        printf( "Enter the value for blockSize: " );
+        scanf ( "%d", &blockSize );
+    }
     //Populate arrays....
     a= (double**)malloc(n*sizeof(double));
     b= (double**)malloc(n*sizeof(double));

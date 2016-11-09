@@ -1,7 +1,7 @@
 all: normalmat
     
 normalmat: normalmat.c
-	gcc $< -lm -g -o $@
+	gcc $< -lm -g -lrt -lpthread -o  $@
 
 
 

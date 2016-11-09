@@ -1,7 +1,7 @@
 all: normalmat
     
 normalmat: normalmat.c
-	gcc $< -lm -o $@
+	gcc $< -lm -g -o $@
 
 
 
@@ -9,4 +9,4 @@ clean:
 	rm -f normalmat
 
 run: clean all
-	./normalmat 1024 64
+	./normalmat 1000 10

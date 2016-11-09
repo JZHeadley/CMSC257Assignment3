@@ -2,6 +2,8 @@
 #include<stdlib.h>
 #include<stdio.h>
 
+//#define min(a,b) (((a) < (b)) ? (a) : (b))
+
 double start, stop, used, mf;
 
 double ftime(void);
@@ -40,6 +42,7 @@ void printmatrix(double **a,int size){
         printf("\n");
     }
 }
+
 void multiply (double **a, double **b, double **c, int n){
     int i, j, k;
     for (i=0; i<n; i++){
@@ -59,15 +62,8 @@ void transpose(double **matrixToTranspose, int size) {
     // Initializing array to put transpose in
     double **transpose=(double**)malloc(size*sizeof(double));
     for(i=0;i<size;i++){
-        transpose[i]=malloc(size * sizeof(double));
+        transpose[i]=((double*) (malloc(size * sizeof(double))));
     }
-    // Filling it with 0's
-    for(i=0;i<size;i++){
-        for(j=0; j<size; j++){
-            transpose[i][j]=0;
-        }
-    }
-
 
     for(i=0;i<size;i++){
         for(j=0;j<size;j++){
@@ -98,12 +94,31 @@ void transposeMultiply(double **a, double **transposedMatrix, double **output, i
     }
 
 }
-void blockedMultiply(double **a, double **b, double **output, int size){
-    int i,j,k,l,m,n;
-    for(i=0;i<size;i++){
-        for(j=0;j<size;j++){
-            for(k=0;k<size;k++){
 
+int min(int i, int n){
+    if(i>n){
+        return n;
+    }else if(n>i){
+        return i;
+    }
+}
+
+void blockedMultiply(double **a, double **b, double **output, int size,int blockSize){
+    int i,j,k,l,m,n,imin=0,jmin=0,kmin=0;
+    for(i=0;i<size;i+=blockSize){
+        imin = min(i+blockSize-1,size);
+        for(j=0;j<size;j+=blockSize){
+            jmin = min(j+blockSize-1,size);
+            for(k=0;k<size;k+=blockSize){
+                kmin = min(k+blockSize-1,size);
+                for (l=i;l<imin;l++){
+                    for(m=j;m<jmin;m++){
+                        for(n=k;n<kmin;n++){
+                            // printf("%f\n",output[i][j] + a[i][k] * b[k][j]);
+                            output[i][j] = output[i][j] + a[i][k] * b[k][j];
+                        }
+                    }
+                }
             }
         }
     }
@@ -134,9 +149,9 @@ int main (int argc, char *argv[]){
         scanf ( "%d", &blockSize );
     }
     //Populate arrays....
-    a= (double**)malloc(n*sizeof(double));
-    b= (double**)malloc(n*sizeof(double));
-    c= (double**)malloc(n*sizeof(double));
+    a = (double**)malloc(n*sizeof(double));
+    b = (double**)malloc(n*sizeof(double));
+    c = (double**)malloc(n*sizeof(double));
     transposedMatrixB= (double**)malloc(n*sizeof(double));
 
     for (i=0; i<n; i++) {
@@ -154,12 +169,12 @@ int main (int argc, char *argv[]){
         }
     }
 
-    printf("\nNormal Matrix Multiplication\n");
-    start = ftime();
-    multiply (a,b,c,n);
-    printDifferencesInTime(ftime(),start, n);
-    printf("Result of normal mult\n");
-    printmatrix(c,n);
+    //    printf("\nNormal Matrix Multiplication\n");
+    //    start = ftime();
+    //    multiply (a,b,c,n);
+    //    printDifferencesInTime(ftime(),start, n);
+    //    printf("Result of normal mult\n");
+    //    printmatrix(c,n);
 
     printf("\nTransposed Matrix Multiplication\n");
     transpose(b,n);
@@ -168,14 +183,21 @@ int main (int argc, char *argv[]){
     printDifferencesInTime(ftime(),start,n);
 
     printf("\nBlocked Matrix Multiplication\n");
-    printf("A Matrix\n");
-    printmatrix(a,n);
-    printf("B Matrix\n");
-    printmatrix(b,n);
-    printf("Result of transposed multiplication\n");
-    printmatrix(c,n);
-    printf("Transposed matrix\n");
-    printmatrix(transposedMatrixB,n);
+    start = ftime();
+    blockedMultiply(a,b,c,n,blockSize);
+    printDifferencesInTime(ftime(),start,n);
+
+    if(n<15){
+        printf("A Matrix\n");
+        printmatrix(a,n);
+        printf("B Matrix\n");
+        printmatrix(b,n);
+        printf("Result of transposed multiplication\n");
+        printmatrix(c,n);
+        printf("Transposed matrix\n");
+        printmatrix(transposedMatrixB,n);
+    }
+
     return (0);
 }
 
@@ -226,13 +248,13 @@ void createSomeReport(){
         printf ( "Elapsed time:   %10.2f \t", used);
         printf ( "DP MFLOPS:       %10.2f \n", mf);
 
-        //        printf("\nBlocked Matrix Multiplication");
-        //      start = ftime();
-        //    used = ftime() - start;
-        //  mf = (n*n * 2.0) / used / 1000000.0 * n;
-        //        printf ("\n");
-        //      printf ( "Elapsed time:   %10.2f \t", used);
-        //    printf ( "DP MFLOPS:       %10.2f \n", mf);
+        printf("\nBlocked Matrix Multiplication");
+        start = ftime();
+        used = ftime() - start;
+        mf = (n*n * 2.0) / used / 1000000.0 * n;
+        printf ("\n");
+        printf ( "Elapsed time:   %10.2f \t", used);
+        printf ( "DP MFLOPS:       %10.2f \n", mf);
 
 
     }

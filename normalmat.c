@@ -284,17 +284,21 @@ int main (int argc, char *argv[]){
     int i, j, n, blockSize;
     double **a, **b, **c, **transposedMatrixB;
 
+
+
     if(argc == 3){
         printf("Command Line args were passed");
         n = atoi(argv[1]);
         blockSize = atoi(argv[2]);
-    } else{
+
+    } else {
         printf ( "Enter the value of n: ");
         scanf ( "%d", &n);
         printf( "Enter the value for blockSize: " );
         scanf ( "%d", &blockSize );
+
     }
-    setupSharedMemForThreads(n);
+
     //Populate arrays....
     a = (double**)malloc(n*sizeof(double));
     b = (double**)malloc(n*sizeof(double));
@@ -307,6 +311,9 @@ int main (int argc, char *argv[]){
         c[i]= (double*)malloc(sizeof(double)*n);
         transposedMatrixB[i] = (double*)malloc(sizeof(double)*n);
     }
+
+    setupSharedMemForThreads(n);
+
 
     initializeArrays(a,b,n);
     for(i=0;i<n*n;i++){
@@ -388,9 +395,10 @@ int main (int argc, char *argv[]){
 
 void createSomeReport(){
     int i,n,j,m,z;
+    signal(1,NULL);
     double **a, **b, **c, **transposedMatrixB;
 
-    for(m=0;m<=50;m++){
+    for(m=5;m<=50;m++){
         n=m*100;
         printf("\nn=%i",n);
         //Populate arrays....
@@ -414,6 +422,7 @@ void createSomeReport(){
         }
         transpose(transposedMatrixB,n);
 
+
         printf(GREEN"\nNormal Matrix Multiplication\t\t");
         start = ftime();
         multiply (a,b,c,n);
@@ -433,9 +442,10 @@ void createSomeReport(){
         printf ( "Elapsed time:   %10.2f \t", used);
         printf ( "DP MFLOPS:       %10.2f \n" RESET, mf);
 
-        for(z=100; z <= n; z+=100){
+
+        for(z=32; z <= n; z*=2){
             printf(CYAN"\nSize of %i and blockSize of %i", n, z);
-            printf("\nBlocked Matrix Multiplication\t\t");
+            printf("\nBlocked Matrix Multiplication\t\t\t");
             start = ftime();
             blockedMultiply(a,b,c,n,z);
             used = ftime() - start;
@@ -443,6 +453,17 @@ void createSomeReport(){
             //printf ("\n");
             printf ( "Elapsed time:   %10.2f \t", used);
             printf ( "DP MFLOPS:       %10.2f\n" RESET, mf);
+
+            printf(CYAN"\nSize of %i and blockSize of %i", n, z);
+            printf("\nThreaded Blocked Matrix Multiplication\t\t");
+            start = ftime();
+            threadedBlockMultiply(sharedA,sharedB,sharedC,n,z);
+            used = ftime() - start;
+            mf = (n*n * 2.0) / used / 1000000.0 * n;
+            //printf ("\n");
+            printf ( "Elapsed time:   %10.2f \t", used);
+            printf ( "DP MFLOPS:       %10.2f\n" RESET, mf);
+
         }
 
     }

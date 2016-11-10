@@ -92,6 +92,8 @@ void sharedMultiply (double *a, double *b, double *c, int n){
                 c[i*n+j]= c[i*n+j] + a[i*n+k] * b[k*n+j];
         }
     }
+    printf("Result of shared Multiplication\n");
+    print1DMatrix(c,n);
 }
 
 void multiply (double **a, double **b, double **c, int n){
@@ -204,6 +206,23 @@ void setupSharedMemForThreads(int size) {
 }
 
 void threadedBlockMultiply(double **a, double **b, double **output, int size, int blockSize) {
+    int i, j, k, l, m, n, imin=0, jmin=0, kmin=0;
+    for(i=0; i < size; i += blockSize){
+        imin = min(i + blockSize - 1, size);
+        for(j=0; j < size; j += blockSize){
+            jmin = min(j + blockSize - 1, size);
+            for(k=0; k < size; k += blockSize){
+                kmin = min( k + blockSize - 1, size);
+                for (l=i; l < imin; l++){
+                    for(m=j; m < jmin; m++){
+                        for(n=k; n < kmin; n++){
+                            output[i][j] = output[i][j] + a[i][k] * b[k][j];
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 }
 
@@ -254,6 +273,17 @@ int main (int argc, char *argv[]){
         }
     }
 
+    for(i=0; i < n; i++){
+        for(j=0; j < n; j++){
+            sharedA[i*n+j]= a[i][j];
+            sharedB[i*n+j]= b[i][j];
+            sharedC[i*n+j]= c[i][j];
+        }
+    }
+
+    sharedMultiply(sharedA,sharedB,sharedC,n);
+
+
     printf(GREEN"\nNormal Matrix Multiplication\n");
     start = ftime();
     multiply (a,b,c,n);
@@ -264,15 +294,6 @@ int main (int argc, char *argv[]){
         printmatrix(c,n);
 
     }
-    for(i=0; i < n; i++){
-        for(j=0; j < n; j++){
-            sharedA[i*n+j]= a[i][j];
-            sharedB[i*n+j]= b[i][j];
-            sharedC[i*n+j]= c[i][j];
-        }
-    }
-
-    sharedMultiply(sharedA,sharedB,sharedC,n);
 
 
     printf(MAGENTA"\nTransposed Matrix Multiplication\n");

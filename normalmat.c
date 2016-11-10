@@ -8,7 +8,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <sys/times.h>
 
 #define RED     "\x2b[31m"
 #define GREEN   "\x1b[32m"
@@ -29,9 +28,18 @@ void multiply (double **a, double **b, double **c, int n);
 void createSomeReport();
 
 double ftime (void){
-    struct tms t;
-    times ( &t );
-    return (t.tms_utime + t.tms_stime) / 100.0;
+    /*
+       struct tms t;
+       times ( &t );
+       return (t.tms_utime + t.tms_stime) / 100.0;
+    //return (t.tms_cutime + t.tms_cstime) / 100.0;
+    */
+
+
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return (double) t.tv_sec + (double) t.tv_usec / 1000000.0;
+
 }
 
 void initializeArrays(double **a, double **b, int n){
@@ -157,16 +165,31 @@ int min(int i, int n){
 
 void blockedMultiply(double **a, double **b, double **output, int size, int blockSize){
     int i, j, k, l, m, n, imin=0, jmin=0, kmin=0;
+    printmatrix(a,size);
+    printmatrix(b,size);
+    for(i=0;i<size;i++){
+        for(j=0;j<size;j++){
+            output[i][j]=0;
+        }
+    }
+    printmatrix(output,size);
+
     for(i=0; i < size; i += blockSize){
-        imin = min(i + blockSize - 1, size);
+
+        imin = min(i + blockSize, size);
+
         for(j=0; j < size; j += blockSize){
-            jmin = min(j + blockSize - 1, size);
+
+            jmin = min(j + blockSize, size);
+
             for(k=0; k < size; k += blockSize){
-                kmin = min( k + blockSize - 1, size);
+
+                kmin = min( k + blockSize, size);
+
                 for (l=i; l < imin; l++){
                     for(m=j; m < jmin; m++){
                         for(n=k; n < kmin; n++){
-                            output[i][j] = output[i][j] + a[i][k] * b[k][j];
+                            output[l][m] = output[l][m] + a[l][n] * b[n][m];
                         }
                     }
                 }
@@ -175,9 +198,9 @@ void blockedMultiply(double **a, double **b, double **output, int size, int bloc
     }
 }
 
-
 void setupSharedMemForThreads(int size) {
     int shmfd;
+
 
     shmfd = shm_open("/jzheadleySemaphores", O_RDWR | O_CREAT, 0666);
     ftruncate(shmfd, size * size * sizeof(sem_t));
@@ -205,21 +228,41 @@ void setupSharedMemForThreads(int size) {
 
 }
 
-void threadedBlockMultiply(double **a, double **b, double **output, int size, int blockSize) {
+
+
+void threadedBlockMultiply(double *a, double *b, double *output, int size, int blockSize) {
     int i, j, k, l, m, n, imin=0, jmin=0, kmin=0;
     for(i=0; i < size; i += blockSize){
-        imin = min(i + blockSize - 1, size);
+        imin = min(i + blockSize, size);
         for(j=0; j < size; j += blockSize){
-            jmin = min(j + blockSize - 1, size);
+            jmin = min(j + blockSize, size);
             for(k=0; k < size; k += blockSize){
-                kmin = min( k + blockSize - 1, size);
-                for (l=i; l < imin; l++){
-                    for(m=j; m < jmin; m++){
-                        for(n=k; n < kmin; n++){
-                            output[i][j] = output[i][j] + a[i][k] * b[k][j];
+                kmin = min( k + blockSize, size);
+
+                int childPid= fork();
+                if ( childPid < 0 ) {
+                    fprintf(stderr,"fork failed at %d\n",i);
+                    fprintf(stderr,"Use a larger block size we spawned too many processes\n");
+                    exit(1);
+                } else if ( childPid > 0 ) {
+                    //printf("parent: new child is %d\n",childPid);
+                } else {
+                    //usleep ( 1000 );
+                    //printf("child %d, parent is %d\n",i, getpid());
+                    //printf("Spawning new thread\n");
+                    for (l=i; l < imin; l++){
+                        for(m=j; m < jmin; m++){
+                            for(n=k; n < kmin; n++){
+                                sem_wait(&semaphores[i*size+j]);
+                                output[l*size+m] = output[l*size+m] + a[l*size+n] * b[n*size+m];
+                                sem_post(&semaphores[i*size+j]);
+                            }
+
                         }
                     }
+                    exit(0);
                 }
+
             }
         }
     }
@@ -266,6 +309,9 @@ int main (int argc, char *argv[]){
     }
 
     initializeArrays(a,b,n);
+    for(i=0;i<n*n;i++){
+        sem_init(&semaphores[i], 1, 1);
+    }
 
     for(i=0;i<n;i++){
         for(j=0;j<n;j++){
@@ -281,9 +327,15 @@ int main (int argc, char *argv[]){
         }
     }
 
-    sharedMultiply(sharedA,sharedB,sharedC,n);
-
-
+    /*
+       sharedMultiply(sharedA,sharedB,sharedC,n);
+       if(n<32){
+       printf("A Matrix\n");
+       printmatrix(a,n);
+       printf("B Matrix\n");
+       printmatrix(b,n);
+       }
+       */
     printf(GREEN"\nNormal Matrix Multiplication\n");
     start = ftime();
     multiply (a,b,c,n);
@@ -297,35 +349,39 @@ int main (int argc, char *argv[]){
 
 
     printf(MAGENTA"\nTransposed Matrix Multiplication\n");
-    transpose(b,n);
+    transpose(transposedMatrixB,n);
     start = ftime();
-    transposeMultiply(a,b,c,n);
+    transposeMultiply(a,transposedMatrixB,c,n);
     printDifferencesInTime(ftime(),start,n);
+    if(n<32){
+        printf("Transposed matrix\n");
+        printmatrix(transposedMatrixB,n);
+        printf("Result of transpose Multiplication\n");
+        printmatrix(c,n);
+    }
 
     printf(CYAN"\nBlocked Matrix Multiplication\n");
     start = ftime();
     blockedMultiply(a,b,c,n,blockSize);
     printDifferencesInTime(ftime(),start,n);
-
+    if(n<32){
+        printf("Block Multiplied matrix\n");
+        printmatrix(c,n);
+    }
     printf(YELLOW"\nThreaded Blocked Matrix Multiplication\n");
     start = ftime();
-    threadedBlockMultiply(a,b,c,n,blockSize);
+    threadedBlockMultiply(sharedA,sharedB,sharedC,n,blockSize);
     printDifferencesInTime(ftime(),start,n);
-
+    print1DMatrix(sharedC,n);
 
 
     if(n<64){
-        printf("A Matrix\n");
-        printmatrix(a,n);
-        printf("B Matrix\n");
-        printmatrix(b,n);
-        printf("Transposed matrix\n");
-        printmatrix(transposedMatrixB,n);
-        printf("Result of transposed multiplication\n");
+        printf("Result of block multiplication\n");
         printmatrix(c,n);
     } else{
         printf("Enter a matrix with size of less than 32 in order to see the resulting matrix printed\n");
     }
+
 
     return (0);
 }
@@ -366,7 +422,7 @@ void createSomeReport(){
         mf = (n*n * 2.0) / used / 1000000.0 * n;
         //printf ("\n");
         printf ( "Elapsed time:   %10.2f \t", used);
-        printf ( "DP MFLOPS:       %10.2f \n"RESET, mf);
+        printf ( "DP MFLOPS:       %10.2f \n" RESET, mf);
 
         printf(MAGENTA"Transposed Matrix Multiplication\t");
         start = ftime();
@@ -375,7 +431,7 @@ void createSomeReport(){
         mf = (n*n * 2.0) / used / 1000000.0 * n;
         //printf ("\n");
         printf ( "Elapsed time:   %10.2f \t", used);
-        printf ( "DP MFLOPS:       %10.2f \n"RESET, mf);
+        printf ( "DP MFLOPS:       %10.2f \n" RESET, mf);
 
         for(z=100; z <= n; z+=100){
             printf(CYAN"\nSize of %i and blockSize of %i", n, z);
@@ -386,8 +442,10 @@ void createSomeReport(){
             mf = (n*n * 2.0) / used / 1000000.0 * n;
             //printf ("\n");
             printf ( "Elapsed time:   %10.2f \t", used);
-            printf ( "DP MFLOPS:       %10.2f\n"RESET, mf);
+            printf ( "DP MFLOPS:       %10.2f\n" RESET, mf);
         }
 
     }
+
+
 }

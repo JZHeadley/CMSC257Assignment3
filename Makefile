@@ -9,4 +9,4 @@ clean:
 	rm -f normalmat
 
 run: clean all
-	./normalmat 1000 10
+	./normalmat 1000 128

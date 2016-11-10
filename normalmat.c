@@ -20,7 +20,9 @@
 
 
 double start, stop, used, mf;
-sem_t **semaphores;
+
+sem_t *semaphores;
+double *sharedA, *sharedB,  *sharedC;
 
 double ftime(void);
 void multiply (double **a, double **b, double **c, int n);
@@ -46,9 +48,22 @@ void initializeArrays(double **a, double **b, int n){
 
 }
 
+void print1DMatrix(double *a,int size){
+    int row,column;
+    if(size<=32){
+        for(row=0;row<size;row++){
+            for(column=0;column<size;column++){
+                printf("%10.0f\t",a[row * size + column]);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
+}
+
 void printmatrix(double **a,int size){
     int row,column;
-    if(size<=15){
+    if(size<=32){
         for(row=0;row<size;row++){
             for(column=0;column<size;column++){
                 printf("%10.0f\t",a[row][column]);
@@ -56,6 +71,26 @@ void printmatrix(double **a,int size){
             printf("\n");
         }
         printf("\n");
+    }
+}
+
+void sharedMultiply (double *a, double *b, double *c, int n){
+    printf("SharedA\n");
+    print1DMatrix(a,n);
+    printf("SharedB\n");
+    print1DMatrix(b,n);
+    printf("SharedC\n");
+    print1DMatrix(c,n);
+    int i, j, k;
+    for (i=0; i<n; i++){
+        for (j=0; j<n; j++)
+            c[i*n+j] = 0;
+    }
+    for (i=0; i<n; i++){
+        for (j=0; j<n; j++){
+            for (k=0; k<n; k++)
+                c[i*n+j]= c[i*n+j] + a[i*n+k] * b[k*n+j];
+        }
     }
 }
 
@@ -118,7 +153,7 @@ int min(int i, int n){
     return i;
 }
 
-void blockedMultiply(double **a, double **b, double **output, int size,int blockSize){
+void blockedMultiply(double **a, double **b, double **output, int size, int blockSize){
     int i, j, k, l, m, n, imin=0, jmin=0, kmin=0;
     for(i=0; i < size; i += blockSize){
         imin = min(i + blockSize - 1, size);
@@ -139,14 +174,36 @@ void blockedMultiply(double **a, double **b, double **output, int size,int block
 }
 
 
-void threadedBlockMultiply(double **a, double **b, double **output, int size, int blockSize) {
+void setupSharedMemForThreads(int size) {
     int shmfd;
 
-    shmfd = shm_open("jzheadleySemaphores", O_RDWR | O_CREAT, 0666);
+    shmfd = shm_open("/jzheadleySemaphores", O_RDWR | O_CREAT, 0666);
     ftruncate(shmfd, size * size * sizeof(sem_t));
-    semaphores = (sem_t **)mmap (NULL, size*size*sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd,0);
+    semaphores = (sem_t *)mmap (NULL, size*size*sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd,0);
     close(shmfd);
-    shm_unlink("jzheadleySemaphores");
+    shm_unlink("/jzheadleySemaphores");
+
+    shmfd = shm_open("/jzheadleySharedA", O_RDWR | O_CREAT, 0666);
+    ftruncate(shmfd, size * size * sizeof(double));
+    sharedA = (double *)mmap (NULL, size * size * sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd,0);
+    close(shmfd);
+    shm_unlink("/jzheadleySharedA");
+
+    shmfd = shm_open("/jzheadleySharedB", O_RDWR | O_CREAT, 0666);
+    ftruncate(shmfd, size * size * sizeof(double));
+    sharedB = (double *)mmap (NULL, size*size*sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd,0);
+    close(shmfd);
+    shm_unlink("/jzheadleySharedB");
+
+    shmfd = shm_open("/jzheadleySharedC", O_RDWR | O_CREAT, 0666);
+    ftruncate(shmfd, size * size * sizeof(double));
+    sharedC = (double *)mmap (NULL, size*size*sizeof(double), PROT_READ | PROT_WRITE, MAP_SHARED, shmfd,0);
+    close(shmfd);
+    shm_unlink("/jzheadleySharedC");
+
+}
+
+void threadedBlockMultiply(double **a, double **b, double **output, int size, int blockSize) {
 
 }
 
@@ -164,9 +221,10 @@ int main (int argc, char *argv[]){
     //return 0;
     int i, j, n, blockSize;
     double **a, **b, **c, **transposedMatrixB;
+
     if(argc == 3){
         printf("Command Line args were passed");
-        n =atoi(argv[1]);
+        n = atoi(argv[1]);
         blockSize = atoi(argv[2]);
     } else{
         printf ( "Enter the value of n: ");
@@ -174,18 +232,18 @@ int main (int argc, char *argv[]){
         printf( "Enter the value for blockSize: " );
         scanf ( "%d", &blockSize );
     }
+    setupSharedMemForThreads(n);
     //Populate arrays....
     a = (double**)malloc(n*sizeof(double));
     b = (double**)malloc(n*sizeof(double));
     c = (double**)malloc(n*sizeof(double));
     transposedMatrixB= (double**)malloc(n*sizeof(double));
-    semaphores = (sem_t **) malloc(n*sizeof(sem_t));
+
     for (i=0; i<n; i++) {
         a[i]= (double*)malloc(sizeof(double)*n);
         b[i]= (double*)malloc(sizeof(double)*n);
         c[i]= (double*)malloc(sizeof(double)*n);
         transposedMatrixB[i] = (double*)malloc(sizeof(double)*n);
-        semaphores[i] = (sem_t *)malloc(sizeof(double)*n);
     }
 
     initializeArrays(a,b,n);
@@ -200,8 +258,22 @@ int main (int argc, char *argv[]){
     start = ftime();
     multiply (a,b,c,n);
     printDifferencesInTime(ftime(),start, n);
-    //printf("Result of normal mult\n");
-    //printmatrix(c,n);
+
+    if(n<32){
+        printf("Result of normal mult\n");
+        printmatrix(c,n);
+
+    }
+    for(i=0; i < n; i++){
+        for(j=0; j < n; j++){
+            sharedA[i*n+j]= a[i][j];
+            sharedB[i*n+j]= b[i][j];
+            sharedC[i*n+j]= c[i][j];
+        }
+    }
+
+    sharedMultiply(sharedA,sharedB,sharedC,n);
+
 
     printf(MAGENTA"\nTransposed Matrix Multiplication\n");
     transpose(b,n);
@@ -214,14 +286,14 @@ int main (int argc, char *argv[]){
     blockedMultiply(a,b,c,n,blockSize);
     printDifferencesInTime(ftime(),start,n);
 
-    printf(YELLOW"\nBlocked Matrix Multiplication\n");
+    printf(YELLOW"\nThreaded Blocked Matrix Multiplication\n");
     start = ftime();
     threadedBlockMultiply(a,b,c,n,blockSize);
     printDifferencesInTime(ftime(),start,n);
 
 
 
-    if(n<15){
+    if(n<64){
         printf("A Matrix\n");
         printmatrix(a,n);
         printf("B Matrix\n");
@@ -230,6 +302,8 @@ int main (int argc, char *argv[]){
         printmatrix(transposedMatrixB,n);
         printf("Result of transposed multiplication\n");
         printmatrix(c,n);
+    } else{
+        printf("Enter a matrix with size of less than 32 in order to see the resulting matrix printed\n");
     }
 
     return (0);
